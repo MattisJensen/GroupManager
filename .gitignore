@@ -1,3 +1,6 @@
+# output
+*.csv
+
 # Compiled class file
 *.class
 
@@ -6,6 +9,9 @@
 
 # BlueJ files
 *.ctxt
+
+# MacOS
+.DS_Store
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
@@ -18,7 +24,43 @@
 *.zip
 *.tar.gz
 *.rar
+*.iml
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+/.idea/
+*/target/
+*.let
+*.args
+
+
+## IntelliJ related stuff ##
+out
+.idea
+**/**/*.iml
+*.ipr
+
+# CMake
+cmake-build-*/
+
+# File-based project format
+*.iws
+
+# mpeltonen/sbt-idea plugin
+.idea_modules/
+
+# JIRA plugin
+atlassian-ide-plugin.xml
+
+# Crashlytics plugin (for Android Studio and IntelliJ)
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# maven & javaFX
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
