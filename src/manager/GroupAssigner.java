@@ -8,10 +8,12 @@ import java.util.stream.Collectors;
 class Person {
     private final String name;
     private final Set<String> allowedGroups;
+    private final int maxGroups;
 
-    public Person(String name, Set<String> allowedGroups) {
+    public Person(String name, Set<String> allowedGroups, int maxGroups) {
         this.name = name;
         this.allowedGroups = allowedGroups;
+        this.maxGroups = maxGroups;
     }
 
     public String getName() {
@@ -21,19 +23,17 @@ class Person {
     public Set<String> getAllowedGroups() {
         return allowedGroups;
     }
+
+    public int getMaxGroups() {
+        return maxGroups;
+    }
 }
 
 class Assignment {
     private final Map<String, List<String>> groups;
-    private final List<String> unassigned;
 
-    public Assignment(Map<String, List<String>> groups, List<String> unassigned) {
+    public Assignment(Map<String, List<String>> groups) {
         this.groups = groups;
-        this.unassigned = unassigned;
-    }
-
-    public List<String> getUnassigned() {
-        return unassigned;
     }
 
     public Map<String, List<String>> getGroups() {
@@ -45,12 +45,12 @@ class Assignment {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Assignment that = (Assignment) o;
-        return Objects.equals(groups, that.groups) && Objects.equals(unassigned, that.unassigned);
+        return Objects.equals(groups, that.groups);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(groups, unassigned);
+        return Objects.hash(groups);
     }
 
     @Override
@@ -63,9 +63,6 @@ class Assignment {
                 sb.append(groupName).append(": ").append(String.join(", ", members)).append("\n");
             }
         }
-        if (!unassigned.isEmpty()) {
-            sb.append("Unassigned: ").append(String.join(", ", unassigned));
-        }
         return sb.toString().trim();
     }
 }
@@ -74,18 +71,16 @@ public class GroupAssigner {
     private final Map<String, Integer> groupMaxSizes;
     private final Map<String, Integer> groupMinSizes;
     private final List<Person> people;
-    private int bestUnassigned;
-    private Set<Assignment> bestAssignments;
     private final boolean minSizePossible;
+    private Set<Assignment> bestAssignments;
 
     public GroupAssigner(Map<String, Integer> groupMaxSizes, List<Person> people, Map<String, Integer> groupMinSizes) {
         this.groupMaxSizes = new HashMap<>(groupMaxSizes);
         this.groupMinSizes = new HashMap<>(groupMinSizes);
         this.people = people.stream()
-                .sorted(Comparator.comparingInt(p -> p.getAllowedGroups().size()))
+                .sorted(Comparator.comparingInt((Person p) -> p.getAllowedGroups().size()).thenComparingInt(p -> -p.getMaxGroups()))
                 .collect(Collectors.toList());
 
-        // Check if any group's max size is less than its min size
         boolean possible = true;
         for (String groupName : groupMinSizes.keySet()) {
             int max = groupMaxSizes.getOrDefault(groupName, 0);
@@ -96,8 +91,6 @@ public class GroupAssigner {
             }
         }
         this.minSizePossible = possible;
-
-        this.bestUnassigned = Integer.MAX_VALUE;
         this.bestAssignments = new HashSet<>();
     }
 
@@ -106,57 +99,72 @@ public class GroupAssigner {
             return Collections.emptySet();
         }
 
-        bestUnassigned = Integer.MAX_VALUE;
         bestAssignments.clear();
-
         Map<String, List<Person>> groupMembers = new HashMap<>();
         for (String groupName : groupMaxSizes.keySet()) {
             groupMembers.put(groupName, new ArrayList<>());
         }
 
-        backtrack(0, groupMembers, new ArrayList<>());
+        backtrack(0, groupMembers);
         return bestAssignments;
     }
 
-    private void backtrack(int index, Map<String, List<Person>> groupMembers, List<Person> unassigned) {
-        if (unassigned.size() > bestUnassigned) {
+    private void backtrack(int personIndex, Map<String, List<Person>> groupMembers) {
+        if (personIndex == people.size()) {
+            if (meetsMinSize(groupMembers)) {
+                Assignment assignment = normalize(groupMembers);
+                bestAssignments.add(assignment);
+            }
             return;
         }
 
-        if (index == people.size()) {
-            // Early check if min sizes are possible
-            if (!meetsMinSize(groupMembers)) {
+        Person person = people.get(personIndex);
+        List<String> allowedGroups = new ArrayList<>(person.getAllowedGroups());
+        int maxGroups = person.getMaxGroups();
+
+        // Generate all possible subsets of allowedGroups with size 0 to maxGroups
+        for (int k = 0; k <= maxGroups; k++) {
+            combine(allowedGroups, k, 0, new ArrayList<>(), groupMembers, person, personIndex);
+        }
+    }
+
+    private void combine(List<String> allowedGroups, int k, int start, List<String> current, Map<String, List<Person>> groupMembers, Person person, int personIndex) {
+        if (current.size() == k) {
+            // Check if all groups in current have capacity
+            boolean canAssign = true;
+            for (String group : current) {
+                if (groupMembers.get(group).size() >= groupMaxSizes.get(group)) {
+                    canAssign = false;
+                    break;
+                }
+            }
+            if (!canAssign) {
                 return;
             }
 
-            Assignment assignment = normalize(groupMembers, unassigned);
-            int currentUnassigned = assignment.getUnassigned().size();
+            // Assign person to all groups in current
+            for (String group : current) {
+                groupMembers.get(group).add(person);
+            }
 
-            synchronized (this) {
-                if (currentUnassigned < bestUnassigned) {
-                    bestUnassigned = currentUnassigned;
-                    bestAssignments.clear();
-                    bestAssignments.add(assignment);
-                } else if (currentUnassigned == bestUnassigned) {
-                    bestAssignments.add(assignment);
-                }
+            // Proceed to next person
+            backtrack(personIndex + 1, groupMembers);
+
+            // Unassign person from all groups in current
+            for (String group : current) {
+                groupMembers.get(group).remove(groupMembers.get(group).size() - 1);
             }
             return;
         }
 
-        Person person = people.get(index);
-        for (String groupName : person.getAllowedGroups()) {
-            List<Person> group = groupMembers.get(groupName);
-            if (group.size() < groupMaxSizes.get(groupName)) {
-                group.add(person);
-                backtrack(index + 1, groupMembers, unassigned);
-                group.remove(person);
+        for (int i = start; i < allowedGroups.size(); i++) {
+            String group = allowedGroups.get(i);
+            if (groupMembers.get(group).size() < groupMaxSizes.get(group)) {
+                current.add(group);
+                combine(allowedGroups, k, i + 1, current, groupMembers, person, personIndex);
+                current.remove(current.size() - 1);
             }
         }
-
-        unassigned.add(person);
-        backtrack(index + 1, groupMembers, unassigned);
-        unassigned.remove(person);
     }
 
     private boolean meetsMinSize(Map<String, List<Person>> groupMembers) {
@@ -170,7 +178,7 @@ public class GroupAssigner {
         return true;
     }
 
-    private Assignment normalize(Map<String, List<Person>> groupMembers, List<Person> unassigned) {
+    private Assignment normalize(Map<String, List<Person>> groupMembers) {
         Map<String, List<String>> normalizedGroups = new TreeMap<>();
         for (Map.Entry<String, List<Person>> entry : groupMembers.entrySet()) {
             String groupName = entry.getKey();
@@ -180,27 +188,11 @@ public class GroupAssigner {
                     .collect(Collectors.toList());
             normalizedGroups.put(groupName, members);
         }
-
-        List<String> normalizedUnassigned = unassigned.stream()
-                .map(Person::getName)
-                .sorted()
-                .collect(Collectors.toList());
-
-        return new Assignment(normalizedGroups, normalizedUnassigned);
-    }
-
-    private static void writeEligiblePersonsToCSV(Map<String, Integer> eligibleCounts, String fileName) throws IOException {
-        try (FileWriter writer = new FileWriter(fileName)) {
-            writer.write("Group,Eligible Persons\n");
-            for (Map.Entry<String, Integer> entry : eligibleCounts.entrySet()) {
-                writer.write(String.format("\"%s\",%d\n", entry.getKey().replace("\"", "\"\""), entry.getValue()));
-            }
-        }
+        return new Assignment(normalizedGroups);
     }
 
     private static void writeAssignmentsToCSV(List<Assignment> assignments, String fileName) throws IOException {
         try (FileWriter writer = new FileWriter(fileName)) {
-            // Write header
             Set<String> allGroups = new TreeSet<>();
             if (!assignments.isEmpty()) {
                 allGroups.addAll(assignments.get(0).getGroups().keySet());
@@ -210,113 +202,63 @@ public class GroupAssigner {
             for (String group : allGroups) {
                 writer.write(String.format(",\"%s\"", group.replace("\"", "\"\"")));
             }
-            writer.write(",Unassigned\n");
+            writer.write("\n");
 
-            // Write each assignment
             for (int i = 0; i < assignments.size(); i++) {
                 Assignment assignment = assignments.get(i);
                 writer.write(String.valueOf(i + 1));
 
                 for (String group : allGroups) {
-                    List<String> members = assignment.getGroups().get(group);
-                    String memberString = members != null ? String.join("; ", members) : "";
+                    List<String> members = assignment.getGroups().getOrDefault(group, Collections.emptyList());
+                    String memberString = String.join("; ", members);
                     writer.write(String.format(",\"%s\"", memberString.replace("\"", "\"\"")));
                 }
 
-                String unassigned = String.join("; ", assignment.getUnassigned());
-                writer.write(String.format(",\"%s\"\n", unassigned.replace("\"", "\"\"")));
+                writer.write("\n");
             }
         }
     }
 
     public static void main(String[] args) {
         Map<String, Integer> groupMaxSizes = new HashMap<>();
-        groupMaxSizes.put("GroupA", 2);
+        groupMaxSizes.put("GroupA", 1);
         groupMaxSizes.put("GroupB", 1);
-        groupMaxSizes.put("GroupC", 3);
+        groupMaxSizes.put("GroupC", 1);
         groupMaxSizes.put("GroupD", 1);
 
         Map<String, Integer> groupMinSizes = new HashMap<>();
         groupMinSizes.put("GroupA", 1);
         groupMinSizes.put("GroupB", 1);
         groupMinSizes.put("GroupC", 1);
-        groupMinSizes.put("GroupD", 0);
+        groupMinSizes.put("GroupD", 1);
 
         List<Person> people = new ArrayList<>();
-        people.add(new Person("Jon", new HashSet<>(Arrays.asList("GroupA", "GroupB"))));
-        people.add(new Person("Sia", new HashSet<>(Arrays.asList("GroupA", "GroupC", "GroupD"))));
-        people.add(new Person("Ura", new HashSet<>(Arrays.asList("GroupA", "GroupD"))));
-        people.add(new Person("Mike", new HashSet<>(Arrays.asList("GroupA", "GroupD"))));
+        people.add(new Person("Jon", new HashSet<>(Arrays.asList("GroupA", "GroupB")), 2));
+        people.add(new Person("Sia", new HashSet<>(Arrays.asList("GroupA", "GroupC", "GroupD")), 1));
+        people.add(new Person("Ura", new HashSet<>(Arrays.asList("GroupA", "GroupD")), 4));
+        people.add(new Person("Mike", new HashSet<>(Arrays.asList("GroupA", "GroupD")), 2));
 
-        boolean calculateEligiblePersonsPerGroup = true;
-        boolean calculatePossibleGroups = true;
-
-        boolean printEligiblePersonsPerGroup = true;
-        boolean printPossibleGroups = true;
-
-        boolean writeEligiblePersonsToCSV = false;
-        boolean writePossibleGroupsToCSV = false;
-        String eligiblePersonsFile = "eligible_persons.csv";
+        boolean writePossibleGroupsToCSV = true;
         String assignmentsFile = "possible_assignments.csv";
 
         try {
-            // Calculate eligible persons per group
-            if (calculateEligiblePersonsPerGroup) {
-                Map<String, Integer> eligibleCounts = new HashMap<>();
-                for (String group : groupMaxSizes.keySet()) {
-                    int count = 0;
-                    for (Person p : people) {
-                        if (p.getAllowedGroups().contains(group)) {
-                            count++;
-                        }
-                    }
-                    eligibleCounts.put(group, count);
-                }
+            GroupAssigner assigner = new GroupAssigner(groupMaxSizes, people, groupMinSizes);
+            Set<Assignment> assignments = assigner.findPossibleAssignments();
 
-                if (printEligiblePersonsPerGroup) {
-                    System.out.println("Eligible persons per group:");
-                    for (Map.Entry<String, Integer> entry : eligibleCounts.entrySet()) {
-                        System.out.println(entry.getKey() + ": " + entry.getValue());
-                    }
+            if (assignments.isEmpty()) {
+                System.out.println("No results meet the group-specific minimum size requirements.");
+            } else {
+                List<Assignment> filtered = new ArrayList<>(assignments);
+
+                System.out.println("There are " + filtered.size() + " possible assignments:");
+                for (Assignment assignment : filtered) {
+                    System.out.println(assignment);
                     System.out.println("-----");
                 }
 
-                if(writeEligiblePersonsToCSV) {
-                    writeEligiblePersonsToCSV(eligibleCounts, eligiblePersonsFile);
-                    System.out.println("Eligible persons data written to " + eligiblePersonsFile);
-
-                }
-            }
-
-            if (calculatePossibleGroups) {
-                GroupAssigner assigner = new GroupAssigner(groupMaxSizes, people, groupMinSizes);
-                Set<Assignment> assignments = assigner.findPossibleAssignments();
-
-                if (assignments.isEmpty()) {
-                    System.out.println("No results meet the group-specific minimum size requirements.");
-                } else {
-                    boolean hasAllAssigned = assignments.stream().anyMatch(a -> a.getUnassigned().isEmpty());
-                    List<Assignment> filtered;
-                    if (hasAllAssigned) {
-                        filtered = assignments.stream()
-                                .filter(a -> a.getUnassigned().isEmpty())
-                                .collect(Collectors.toList());
-                    } else {
-                        filtered = new ArrayList<>(assignments);
-                    }
-
-                    if (printPossibleGroups){
-                        System.out.println("There are" + filtered.size() + "possible assignments:");
-                        for (Assignment assignment : filtered) {
-                            System.out.println(assignment);
-                            System.out.println("");
-                        }
-                    }
-
-                    if (writePossibleGroupsToCSV) {
-                        writeAssignmentsToCSV(filtered, assignmentsFile);
-                        System.out.println("Found " + filtered.size() + " possible assignments. Data written to " + assignmentsFile);
-                    }
+                if (writePossibleGroupsToCSV) {
+                    writeAssignmentsToCSV(filtered, assignmentsFile);
+                    System.out.println("Found " + filtered.size() + " possible assignments. Data written to " + assignmentsFile);
                 }
             }
         } catch (IOException e) {
