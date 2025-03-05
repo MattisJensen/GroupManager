@@ -285,7 +285,7 @@ public class GroupAssigner {
     }
 
     public static void main(String[] args) {
-        boolean allowMultipleGroups = true; // Toggle this flag
+        boolean allowMultipleGroups = false; // Toggle this flag
         String outputFile = "group-results.csv";
         String inputGroupFile = "groups.csv";
         String inputParticipantFile = "participants.csv";

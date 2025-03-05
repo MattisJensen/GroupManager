@@ -1,120 +1,114 @@
-# Group Manager
+# Group Assignment Tool
 
-A Java application that optimally assigns people to groups based on their preferences while respecting minimum and maximum size constraints for each group.
+A Java application that automatically assigns participants to groups based on preferences and constraints.
 
 ## Table of Contents
-- [Description](#description)
+
 - [Features](#features)
-- [How to Use](#how-to-use)
-  - [Setup](#setup)
-  - [Input Configuration](#input-configuration)
-  - [Output Options](#output-options)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Input Format](#input-format)
+- [Output Format](#output-format)
+- [How It Works](#how-it-works)
 - [Contributing](#contributing)
-  - [Reporting Issues](#reporting-issues)
-  - [Development Process](#development-process)
-  - [Code Style Guidelines](#code-style-guidelines)
-  - [Testing](#testing)
-  - [Documentation](#documentation)
-
-## Description
-
-Group Manager is a tool designed to solve the problem of assigning people to different groups based on their preferences. It uses a backtracking algorithm to find all possible valid assignments that satisfy the following constraints:
-- Each person can only be assigned to one group they've expressed interest in
-- Each group has a minimum and maximum size
-- The algorithm attempts to minimize the number of unassigned people
+- [License](#license)
 
 ## Features
+This tool helps distribute participants across groups while respecting:
 
-- Find all possible assignments that minimize the number of unassigned people
-- Calculate and display statistics about eligible people per group
-- Export results to CSV files for further analysis
-- Handle complex assignment problems with multiple constraints
+- **Groups per Person**: Supports to assign participants to multiple groups
+- **Group size**: Respects minimum and maximum group sizes
+- **Group Preferences**: Considers the groups each participant wants to join
+- **Optimization**: Minimizes the number of unassigned participants
+- **CSV Integration**: Simple CSV input/output format for easy data handling in Excel, Numbers, Sheets or similar tools
 
-## How to Use
+## Installation
 
-### Setup
-
-1. Clone the repository
-2. Compile the Java files:
 ```bash
-javac src/manager/*.java
+git clone https://github.com/MattisJensen/GroupAssigner.git
+cd GroupAssigner
+javac src/manager/GroupAssigner.java
 ```
-3. Run the application:
+
+## Usage
+
+1. Prepare your input files (`participants.csv` and `groups.csv`)
+2. Run the application:
+
 ```bash
-java -cp src/ manager.GroupAssigner
+java -cp src manager.GroupAssigner
 ```
 
-### Input Configuration
+- To switch between single and multiple group assignment mode, modify the `allowMultipleGroups` flag (boolean) in the main method.
+- Single group assignment mode is the default and ignores the maximum group size for each person, because the algorithm is *muuuuuch more* efficient in this mode.
 
-To configure your own group assignment problem, modify the `main` method in `GroupAssigner.java`:
+## Input Format
 
-1. Define group maximum sizes:
-```java
-Map<String, Integer> groupMaxSizes = new HashMap<>();
-groupMaxSizes.put("GroupName", maxSize);
+### participants.csv
+
+```
+Name,AllowedGroups,MaxGroups
+Jon,"GroupA;GroupB",2
+Sia,"GroupA;GroupC;GroupD",3
+Rike,"GroupA;GroupD",2
+Mike,"GroupA;GroupD",1
 ```
 
-2. Define group minimum sizes:
-```java
-Map<String, Integer> groupMinSizes = new HashMap<>();
-groupMinSizes.put("GroupName", minSize);
+- **Name**: Participant's name
+- **AllowedGroups**: Semicolon-separated list of groups the participant can join
+- **MaxGroups**: Maximum number of groups the participant can join
+
+### groups.csv
+
+```
+GroupName,MinSize,MaxSize
+GroupA,1,2
+GroupB,1,1
+GroupC,1,1
+GroupD,1,3
 ```
 
-3. Add people and their group preferences:
-```java
-List<Person> people = new ArrayList<>();
-people.add(new Person("Person Name", new HashSet<>(Arrays.asList("Group1", "Group2"))));
+- **GroupName**: Name of the group
+- **MinSize**: Minimum required participants
+- **MaxSize**: Maximum allowed participants
+
+## Output Format
+
+The program generates a `group-results.csv` file with all possible assignments:
+
+```
+Assignment,"GroupA","GroupB","GroupC","GroupD",Unassigned
+1,"Rike","Jon","Sia","Mike; Sia",""
+...
 ```
 
-### Output Options
+## How It Works
 
-You can control the output behavior with these boolean flags:
-- `calculateEligiblePersonsPerGroup` - Calculate statistics about eligible people per group
-- `calculatePossibleGroups` - Find possible group assignments
-- `printEligiblePersonsPerGroup` - Print statistics to console
-- `printPossibleGroups` - Print assignments to console
-- `writeEligiblePersonsToCSV` - Write statistics to CSV
-- `writePossibleGroupsToCSV` - Write assignments to CSV
-
-
+The application uses a backtracking algorithm to find all possible assignments that:
+1. Satisfy minimum and maximum group sizes
+2. Respect participants' allowed groups
+3. Stay within each participant's maximum group limit
+4. Minimize the number of unassigned participants
 
 ## Contributing
 
-Contributions to Group Manager are welcome! Here's how you can contribute:
+Contributions are welcome! Here's how you can help:
 
-### Reporting Issues
+1. **Fork** the repository
+2. **Clone** your fork: `git clone https://github.com/your-username/GroupAssigner.git`
+3. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+4. **Commit** your changes: `git commit -m 'Add some amazing feature'`
+5. **Push** to the branch: `git push origin feature/amazing-feature`
+6. **Submit** a Pull Request
 
-- Use the GitHub issue tracker to report bugs or suggest features
-- Provide detailed steps to reproduce any bugs you report
-- Include information about your environment (OS, Java version, etc.)
+Please ensure your code follows the existing style and includes appropriate tests.
 
-### Development Process
+### Development Guidelines
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for your changes if applicable
-5. Run existing tests to ensure nothing is broken
-6. Commit your changes (`git commit -m 'Add some amazing feature'`)
-7. Push to your branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+- Follow Java coding conventions
+- Add unit tests for new features
+- Update documentation as needed
 
-### Code Style Guidelines
+## License
 
-- Follow standard Java naming conventions
-- Maintain consistent indentation (4 spaces)
-- Add comments for complex logic
-- Write clear, descriptive method and variable names
-- Keep methods focused on a single responsibility
-
-### Testing
-
-- Add unit tests for new functionality using JUnit
-- Ensure all tests pass before submitting a pull request
-- Include test cases for edge conditions and error scenarios
-
-### Documentation
-
-- Update the README with any necessary changes
-- Document new features or changed behavior
-- Add JavaDocs for new methods and classes
+See the [LICENSE](LICENSE) file for details.
