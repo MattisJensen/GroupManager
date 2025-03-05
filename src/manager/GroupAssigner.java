@@ -1,5 +1,7 @@
 package manager;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
@@ -35,26 +37,32 @@ public class GroupAssigner {
     private Set<Assignment> bestAssignments;
 
     /**
-     * Constructs a GroupAssigner with specified constraints.
+     * Constructor to initialize group constraints and participants.
      *
-     * @param groupMaxSizes Map of group names to their maximum capacities
-     * @param people        List of people to assign to groups
-     * @param groupMinSizes Map of group names to their minimum required members
-     * @throws IllegalArgumentException if any group's max size < min size
+     * @param groupsFile The CSV file containing group constraints
+     * @param participantsFile The CSV file containing participant constraints
+     * @throws IOException If file reading fails
      */
-    public GroupAssigner(Map<String, Integer> groupMaxSizes,
-                         List<Person> people,
-                         Map<String, Integer> groupMinSizes) {
-        this.groupMaxSizes = new HashMap<>(groupMaxSizes);
-        this.groupMinSizes = new HashMap<>(groupMinSizes);
-        this.people = people.stream()
+    public GroupAssigner(String groupsFile, String participantsFile) throws IOException {
+        // Read group constraints
+        Map<String, Integer[]> groupConstraints = readGroupsCSV(groupsFile);
+        this.groupMaxSizes = new HashMap<>();
+        this.groupMinSizes = new HashMap<>();
+        groupConstraints.forEach((groupName, constraints) -> {
+            groupMinSizes.put(groupName, constraints[0]);
+            groupMaxSizes.put(groupName, constraints[1]);
+        });
+
+        // Read participant constraints
+        this.people = readParticipantsCSV(participantsFile).stream()
                 .sorted(Comparator.comparingInt((Person p) ->
                         p.getAllowedGroups().size()).thenComparingInt(p -> -p.getMaxGroups()))
                 .collect(Collectors.toList());
 
+        // Validate group constraints
         boolean possible = true;
         for (String groupName : groupMinSizes.keySet()) {
-            int max = groupMaxSizes.getOrDefault(groupName, 0);
+            int max = groupMaxSizes.get(groupName);
             int min = groupMinSizes.get(groupName);
             if (max < min) {
                 possible = false;
@@ -125,16 +133,29 @@ public class GroupAssigner {
                          List<String> current, Map<String, List<Person>> groupMembers,
                          Person person, int personIndex) {
         if (current.size() == k) {
-            // Validate group capacities before assignment
-            boolean canAssign = current.stream()
-                    .allMatch(group -> groupMembers.get(group).size() < groupMaxSizes.get(group));
+            // Check if all groups in current have capacity
+            boolean canAssign = true;
+            for (String group : current) {
+                if (groupMembers.get(group).size() >= groupMaxSizes.get(group)) {
+                    canAssign = false;
+                    break;
+                }
+            }
+            if (!canAssign) {
+                return;
+            }
 
-            if (canAssign) {
-                // Temporarily assign person to groups
-                current.forEach(group -> groupMembers.get(group).add(person));
-                backtrack(personIndex + 1, groupMembers);
-                // Remove after backtracking
-                current.forEach(group -> groupMembers.get(group).remove(groupMembers.get(group).size() - 1));
+            // Assign person to all groups in current
+            for (String group : current) {
+                groupMembers.get(group).add(person);
+            }
+
+            // Proceed to next person
+            backtrack(personIndex + 1, groupMembers);
+
+            // Unassign person from all groups in current
+            for (String group : current) {
+                groupMembers.get(group).remove(groupMembers.get(group).size() - 1);
             }
             return;
         }
@@ -172,14 +193,16 @@ public class GroupAssigner {
      * @return Normalized assignment with sorted members
      */
     private Assignment normalize(Map<String, List<Person>> groupMembers) {
-        Map<String, List<String>> normalized = new TreeMap<>();
-        groupMembers.forEach((group, members) ->
-                normalized.put(group, members.stream()
-                        .map(Person::getName)
-                        .sorted()
-                        .collect(Collectors.toList()))
-        );
-        return new Assignment(normalized);
+        Map<String, List<String>> normalizedGroups = new TreeMap<>();
+        for (Map.Entry<String, List<Person>> entry : groupMembers.entrySet()) {
+            String groupName = entry.getKey();
+            List<String> members = entry.getValue().stream()
+                    .map(Person::getName)
+                    .sorted()
+                    .collect(Collectors.toList());
+            normalizedGroups.put(groupName, members);
+        }
+        return new Assignment(normalizedGroups);
     }
 
     /**
@@ -216,33 +239,66 @@ public class GroupAssigner {
         }
     }
 
+    private Map<String, Integer[]> readGroupsCSV(String filename) throws IOException {
+        Map<String, Integer[]> groups = new HashMap<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
+            String line;
+            boolean headerSkipped = false;
+            while ((line = br.readLine()) != null) {
+                if (!headerSkipped) {
+                    headerSkipped = true;
+                    continue;
+                }
+                String[] parts = line.split(",", -1);
+                if (parts.length != 3) {
+                    throw new IOException("Invalid groups.csv format");
+                }
+                String groupName = parts[0].trim();
+                int minSize = Integer.parseInt(parts[1].trim());
+                int maxSize = Integer.parseInt(parts[2].trim());
+                groups.put(groupName, new Integer[]{minSize, maxSize});
+            }
+        }
+        return groups;
+    }
+
+    private List<Person> readParticipantsCSV(String filename) throws IOException {
+        List<Person> participants = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
+            String line;
+            boolean headerSkipped = false;
+            while ((line = br.readLine()) != null) {
+                if (!headerSkipped) {
+                    headerSkipped = true;
+                    continue;
+                }
+                String[] parts = line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)", -1);
+                if (parts.length != 3) {
+                    throw new IOException("Invalid participants.csv format");
+                }
+
+                String name = parts[0].trim();
+                int maxGroups = Integer.parseInt(parts[2].trim());
+                Set<String> allowedGroups = Arrays.stream(parts[1]
+                                .replaceAll("^\"|\"$", "")
+                                .split(";"))
+                        .map(String::trim)
+                        .collect(Collectors.toSet());
+
+                participants.add(new Person(name, allowedGroups, maxGroups));
+            }
+        }
+        return participants;
+    }
+
     /**
      * Main execution method with example configuration.
      *
      * @param args Command line arguments (not used)
      */
     public static void main(String[] args) {
-        // Example configuration. Put your own data here.
-        Map<String, Integer> maxSizes = new HashMap<>();
-        maxSizes.put("GroupA", 2);
-        maxSizes.put("GroupB", 1);
-        maxSizes.put("GroupC", 3);
-        maxSizes.put("GroupD", 1);
-
-        Map<String, Integer> minSizes = new HashMap<>();
-        minSizes.put("GroupA", 1);
-        minSizes.put("GroupB", 1);
-        minSizes.put("GroupC", 1);
-        minSizes.put("GroupD", 1);
-
-        List<Person> participants = new ArrayList<>();
-        participants.add(new Person("Jon", Set.of("GroupA", "GroupB"), 2));
-        participants.add(new Person("Sia", Set.of("GroupA", "GroupC", "GroupD"), 2));
-        participants.add(new Person("Ura", Set.of("GroupA", "GroupD"), 2));
-        participants.add(new Person("Mike", Set.of("GroupA", "GroupD"), 2));
-
         try {
-            GroupAssigner assigner = new GroupAssigner(maxSizes, participants, minSizes);
+            GroupAssigner assigner = new GroupAssigner("groups.csv", "participants.csv");
             Set<Assignment> solutions = assigner.findPossibleAssignments();
 
             if (solutions.isEmpty()) {
@@ -252,11 +308,11 @@ public class GroupAssigner {
                 results.forEach(a -> System.out.println(a + "\n"));
                 System.out.println("Found " + results.size() + " valid assignments.");
 
-                writeAssignmentsToCSV(results, "assignments.csv");
-                System.out.println("Results exported to assignments.csv");
+                writeAssignmentsToCSV(results, "group-results.csv");
+                System.out.println("Results exported to group-results.csv");
             }
         } catch (IOException e) {
-            System.err.println("Error writing results: " + e.getMessage());
+            System.err.println("Error processing files: " + e.getMessage());
             e.printStackTrace();
         }
     }
