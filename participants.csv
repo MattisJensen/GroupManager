@@ -1,5 +1,5 @@
 Name,AllowedGroups,MaxGroups
 Jon,"GroupA;GroupB",2
-Sia,"GroupA;GroupC;GroupD",2
+Sia,"GroupA;GroupC;GroupD",3
 Rike,"GroupA;GroupD",2
-Mike,"GroupA;GroupD",2
+Mike,"GroupA;GroupD",1
